@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8"> <!-- 設定字元編碼為 UTF-8 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- 適應行動裝置 -->
+    <title>costar</title> <!-- 網頁標題 -->
+    <!-- 引入 Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- 引入 SweetAlert CSS 和 JS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        /* 自訂樣式 */
+        .chat-box {
+            height: 450px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+        }
+        .user-message {
+            background-color: #d1e7dd;
+            color: #0f5132;
+            margin-left: auto; /* 靠右對齊 */
+            max-width: fit-content;
+        }
+        .bot-message {
+            background-color: #e2e3e5;
+            color: #41464b;
+            margin-right: auto; /* 靠左對齊 */
+            max-width: fit-content;
+        }
+
+        /* 拖曳符號樣式 */
+        .drag-icon {
+            cursor: grab;
+        }
+
+        /* 垃圾桶符號樣式 */
+        .delete-icon {
+            cursor: pointer;
+            color: red;
+        }
+
+        /* 編輯符號樣式 */
+        .edit-icon {
+            cursor: pointer;
+            color: blue;
+            margin-left: 10px;
+        }
+
+        /* 另存新檔符號樣式 */
+        .save-icon {
+            cursor: pointer;
+            color: green;
+            margin-left: 10px;
+        }
+
+        /* 垃圾桶和拖曳符號容器樣式 */
+        .icons-container {
+            display: flex;
+            align-items: center;
+        }
+
+        /* 動畫效果 */
+        .list-group-item.active {
+            background-color: #61dcf4; /* 背景顏色 */
+            color: white; /* 文字顏色 */
+            transition: background-color 0.3s ease, color 0.3s ease; /* 動畫過渡效果 */
+        }
+        /* 字體大小控制符號樣式 */
+        .font-size-icon {
+            cursor: pointer;
+            margin-left: 10px;
+            font-size: 20px;
+        }
+
+
+    </style>
+</head>
+<body class="bg-light">
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <!-- 對話標題列表 -->
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                        <h6 class="card-title mb-0">對話列表</h6>
+                        <button class="btn btn-secondary btn-sm" type="button" onclick="addConversation()">新增對話</button>
+                    </div>
+                    <div class="card-body">
+                        <ul id="conversationList" class="list-group"></ul>
+                    </div>
+                </div>
+            </div>
+            <!-- 聊天框 -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <h6 class="card-title mb-0" id="conversationTitle">costar</h6>
+                        <div class="d-flex align-items-center">
+                            <span class="font-size-icon ms-2" onclick="changeFontSize('increase')">放大 ➕</span>
+                            <span class="font-size-icon ms-2" onclick="changeFontSize('decrease')">縮小 ➖</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- 聊天框 -->
+                        <div class="chat-box mb-3" id="chatBox"> </div>
+                        <!-- 輸入框 -->
+                        <div class="input-group">
+                            <input type="text" id="userMessage" class="form-control" placeholder="請輸入訊息" style="white-space: pre-wrap;">
+                            <button class="btn btn-primary" type="button" onclick="sendMessage()">發送</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 引入 Bootstrap JS 和依賴 -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 讀取 localStorage 資料   
+        let pageIdentifier = window.location.pathname.replace(/\//g, '') || 'p1';
+        const conversationTitlesKey = 'costar_1_conversationTitles'; // 對話標題的 localStorage 鍵xxx_conversationTitles
+
+        let chatHistory = []; // 初始化聊天歷史記錄數組
+        let conversationTitles = []; // 初始化對話標題數組
+
+        // 從 localStorage 中讀取聊天歷史
+        function loadChatHistory(identifier) {
+            const savedChatHistory = localStorage.getItem(identifier + '_chatHistory');
+            if (savedChatHistory) {
+                chatHistory = JSON.parse(savedChatHistory);
+                updateChatBox();
+            } else {
+                chatHistory = [];
+                updateChatBox();
+            }
+            highlightSelectedItem(identifier);
+        }
+
+        // 從 localStorage 中讀取對話標題
+        function loadConversationTitles() {
+            const savedTitles = localStorage.getItem(conversationTitlesKey);
+            if (savedTitles) {
+                conversationTitles = JSON.parse(savedTitles);
+                updateConversationList();
+            } else {
+                conversationTitles = [];
+            }
+        }
+
+        // 保存聊天歷史到 localStorage
+        function saveChatHistory(identifier) {
+            localStorage.setItem(identifier + '_chatHistory', JSON.stringify(chatHistory));
+        }
+
+        // 保存對話標題到 localStorage
+        function saveConversationTitles() {
+            localStorage.setItem(conversationTitlesKey, JSON.stringify(conversationTitles));
+        }
+        function updateChatBox() {
+            const chatBox = document.getElementById("chatBox"); // 獲取聊天框元素
+            chatBox.innerHTML = ''; // 清空聊天框內容
+            chatHistory.forEach(message => { // 遍歷聊天歷史
+                const msgElement = document.createElement("div"); // 創建一個新的 div 元素
+                msgElement.classList.add("message"); // 添加消息樣式
+                msgElement.classList.add(message.sender === 'user' ? "user-message" : "bot-message"); // 根據消息發送者添加對應的樣式
+                // 替換使用者消息中的換行符為<br>以便於顯示
+                msgElement.innerHTML = message.text.replace(/\n/g, '<br>'); // 使用 innerHTML 來支援換行標籤
+                msgElement.style.fontSize = fontSize + 'px'; // 設定字體大小
+                chatBox.appendChild(msgElement); // 將消息元素添加到聊天框
+            });
+            chatBox.scrollTop = chatBox.scrollHeight; // 讓聊天框滾動到底部
+        }
+
+        function sendMessage() {
+            const userMessage = document.getElementById("userMessage").value; // 獲取使用者輸入的消息
+            if (!userMessage) return; // 如果沒有輸入消息，則返回
+
+            // 避免直接使用 innerHTML，转义用户输入
+            const formattedUserMessage = userMessage.replace(/\n/g, '<br>').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            chatHistory.push({ sender: 'user', text: formattedUserMessage }); // 將使用者消息添加到聊天歷史
+            updateChatBox(); // 更新聊天框
+            document.getElementById("userMessage").value = ''; // 清空輸入框
+
+            // 透過 AJAX 發送消息到後端
+            fetch('costar.php', {
+                method: 'POST', // 請求方法為 POST
+                headers: { 'Content-Type': 'application/json' }, // 設定請求頭
+                body: JSON.stringify({ message: userMessage, history: chatHistory }) // 請求體，發送使用者消息和聊天歷史
+            })
+            .then(response => response.json()) // 解析回應為 JSON
+            .then(data => {
+                // 將機器人回覆的段落用 <br> 分隔
+                const formattedReply = data.reply.replace(/\n/g, '<br>'); // 將換行符替換為 <br> 標籤
+                chatHistory.push({ sender: 'bot', text: formattedReply }); // 將格式化後的回覆添加到聊天歷史
+                updateChatBox(); // 更新聊天框
+                saveChatHistory(pageIdentifier); // 保存聊天歷史到 localStorage
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+
+
+
+/*        
+        function updateChatBox() {
+            const chatBox = document.getElementById("chatBox"); // 獲取聊天框元素
+            chatBox.innerHTML = ''; // 清空聊天框內容
+            chatHistory.forEach(message => { // 遍歷聊天歷史
+                const msgElement = document.createElement("div"); // 創建一個新的 div 元素
+                msgElement.classList.add("message"); // 添加消息樣式
+                msgElement.classList.add(message.sender === 'user' ? "user-message" : "bot-message"); // 根據消息發送者添加對應的樣式
+                // 替換使用者消息中的換行符為<br>以便於顯示
+                msgElement.innerHTML = message.text.replace(/\n/g, '<br>'); // 使用 innerHTML 來支援換行標籤
+                msgElement.style.fontSize = fontSize + 'px'; // 設定字體大小
+                chatBox.appendChild(msgElement); // 將消息元素添加到聊天框
+            });
+            chatBox.scrollTop = chatBox.scrollHeight; // 讓聊天框滾動到底部
+        }
+
+        function sendMessage() {
+            const userMessage = document.getElementById("userMessage").value; // 獲取使用者輸入的消息
+            if (!userMessage) return; // 如果沒有輸入消息，則返回
+            const formattedUserMessage = userMessage.replace(/\n/g, '<br>'); // 將換行符替換為 <br> 標籤
+            chatHistory.push({ sender: 'user', text: formattedUserMessage }); // 將使用者消息添加到聊天歷史
+            updateChatBox(); // 更新聊天框
+            document.getElementById("userMessage").value = ''; // 清空輸入框
+            // 透過 AJAX 發送消息到後端
+            fetch('chatbot.php', {
+                method: 'POST', // 請求方法為 POST
+                headers: { 'Content-Type': 'application/json' }, // 設定請求頭
+                body: JSON.stringify({ message: userMessage, history: chatHistory }) // 請求體，發送使用者消息和聊天歷史
+            })
+            .then(response => response.json()) // 解析回應為 JSON
+            .then(data => {
+                // 將機器人回覆的段落用 <br> 分隔
+                const formattedReply = data.reply.replace(/\n/g, '<br>'); // 將換行符替換為 <br> 標籤
+                chatHistory.push({ sender: 'bot', text: formattedReply }); // 將格式化後的回覆添加到聊天歷史
+                updateChatBox(); // 更新聊天框
+                saveChatHistory(pageIdentifier); // 保存聊天歷史到 localStorage
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+*/
+        // 新增對話
+        function addConversation() {
+            Swal.fire({
+                title: '請輸入對話標題',
+                input: 'text',
+                showCancelButton: true,
+                confirmButtonText: '新增',
+                cancelButtonText: '取消',
+                inputValidator: (value) => {
+                    if (!value) {
+                        return '請輸入對話標題';
+                    }
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const title = result.value;
+                    const newIdentifier = 'conv1_' + conversationTitles.length;
+                    conversationTitles.push({ title, identifier: newIdentifier });
+                    saveConversationTitles();
+                    updateConversationList();
+                    chatHistory = [];
+                    pageIdentifier = newIdentifier;
+                    updateChatBox();
+                    highlightSelectedItem(newIdentifier);
+                }
+            });
+        }
+
+        // 更新對話標題列表
+        function updateConversationList() {
+            const conversationList = document.getElementById("conversationList"); // 獲取對話標題列表元素
+            conversationList.innerHTML = ''; // 清空對話標題列表內容
+            conversationTitles.forEach(item => { // 遍歷對話標題數組
+                const titleElement = document.createElement("li"); // 創建一個新的 li 元素
+                titleElement.classList.add("list-group-item", "d-flex", "justify-content-between", "align-items-center"); // 添加清單項目樣式
+                titleElement.textContent = item.title; // 設定對話標題為清單項目文字
+                titleElement.dataset.identifier = item.identifier; // 添加 data-attribute 給辨識
+
+                // 創建一個容器來放編輯符號、垃圾桶符號、拖曳符號和另存新檔符號
+                const iconsContainer = document.createElement("div");
+                iconsContainer.classList.add("icons-container");
+
+                // 添加編輯符號
+                const editIcon = document.createElement("span");
+                editIcon.classList.add("edit-icon");
+                editIcon.innerHTML = "✍️";
+                editIcon.addEventListener("click", () => editConversation(item.identifier));
+                iconsContainer.appendChild(editIcon); // 將編輯符號添加到圖標容器
+
+                // 添加垃圾桶符號
+                const deleteIcon = document.createElement("span");
+                deleteIcon.classList.add("delete-icon");
+                deleteIcon.innerHTML = "&#128465;"; // 垃圾桶符號
+                deleteIcon.addEventListener("click", () => deleteConversation(item.identifier));
+                iconsContainer.appendChild(deleteIcon); // 將垃圾桶符號添加到圖標容器
+
+                // 添加另存新檔符號
+                const saveIcon = document.createElement("span");
+                saveIcon.classList.add("save-icon");
+                saveIcon.innerHTML = "💾";
+                saveIcon.addEventListener("click", () => saveConversationToFile(item.identifier));
+                iconsContainer.appendChild(saveIcon); // 將另存新檔符號添加到圖標容器
+
+                // 添加拖曳符號
+                const dragIcon = document.createElement("span");
+                dragIcon.classList.add("drag-icon");
+                dragIcon.innerHTML = "☰";
+                dragIcon.setAttribute("draggable", "true");
+                dragIcon.addEventListener("dragstart", (e) => dragStart(e, item.identifier));
+                dragIcon.addEventListener("dragover", (e) => dragOver(e));
+                dragIcon.addEventListener("drop", (e) => drop(e, item.identifier));
+                iconsContainer.appendChild(dragIcon); // 將拖曳符號添加到圖標容器
+
+                titleElement.appendChild(iconsContainer); // 將圖標容器添加到清單項目
+
+                titleElement.onclick = function() { // 添加點擊事件監聽器
+                    saveChatHistory(pageIdentifier); // 儲存當前的聊天歷史
+                    pageIdentifier = item.identifier; // 更新頁面識別符
+                    loadChatHistory(item.identifier); // 讀取並顯示選取標題的聊天歷史
+                    highlightSelectedItem(item.identifier); // 突出顯示新選擇的項目
+                };
+
+                conversationList.appendChild(titleElement); // 將清單項目元素添加到對話標題列表
+            });
+        }
+        // 刪除對話
+        function deleteConversation(identifier) {
+            if (confirm("確定要刪除這段對話嗎？")) {
+                // 找到並刪除對話標題
+                const index = conversationTitles.findIndex(item => item.identifier === identifier);
+                if (index !== -1) {
+                    conversationTitles.splice(index, 1);
+                    saveConversationTitles(); // 保存對話標題到 localStorage
+                    updateConversationList(); // 更新對話標題列表
+                }
+
+                // 如果刪除的對話是正在顯示的對話，則清空聊天歷史
+                if (identifier === pageIdentifier) {
+                    chatHistory = [];
+                    updateChatBox();
+                    pageIdentifier = window.location.pathname.replace(/\//g, '') || 'defaultPage';
+                    highlightSelectedItem(pageIdentifier);
+                }
+
+                // 刪除對話歷史
+                localStorage.removeItem(identifier + '_chatHistory');
+            }
+        }
+        // 拖曳開始
+        let draggedItem = null;
+        function dragStart(e, identifier) {
+            draggedItem = identifier;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', null);
+            e.currentTarget.classList.add('dragging');
+        }
+
+        // 拖曳移動
+        function dragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        }
+
+        // 拖曳放開
+        function drop(e, identifier) {
+            e.preventDefault();
+            if (draggedItem && draggedItem !== identifier) {
+                const draggedIndex = conversationTitles.findIndex(item => item.identifier === draggedItem);
+                const targetIndex = conversationTitles.findIndex(item => item.identifier === identifier);
+
+                if (draggedIndex !== -1 && targetIndex !== -1) {
+                    // 交換對話標題的位置
+                    [conversationTitles[draggedIndex], conversationTitles[targetIndex]] = [conversationTitles[targetIndex], conversationTitles[draggedIndex]];
+                    saveConversationTitles(); // 保存對話標題到 localStorage
+                    updateConversationList(); // 更新對話標題列表
+                }
+            }
+            e.currentTarget.classList.remove('dragging');
+        }
+
+
+
+        // 編輯對話標題
+        function editConversation(identifier) {
+            const index = conversationTitles.findIndex(item => item.identifier === identifier);
+            if (index === -1) return;
+
+            Swal.fire({
+                title: '請輸入新的對話標題',
+                input: 'text',
+                inputValue: conversationTitles[index].title,
+                showCancelButton: true,
+                confirmButtonText: '編輯',
+                cancelButtonText: '取消',
+                inputValidator: (value) => {
+                    if (!value) {
+                        return '請輸入對話標題';
+                    }
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const newTitle = result.value;
+                    if (newTitle && newTitle !== conversationTitles[index].title) {
+                        conversationTitles[index].title = newTitle;
+                        saveConversationTitles(); // 保存對話標題到 localStorage
+                        updateConversationList(); // 更新對話標題列表
+                    }
+                }
+            });
+        }
+
+        let fontSize = 14; // 初始化字體大小
+
+        // 變更字體大小
+        function changeFontSize(action) {
+            const chatBox = document.getElementById("chatBox"); // 獲取聊天框元素
+            const messages = chatBox.getElementsByClassName("message"); // 獲取所有消息元素
+
+            if (action === 'increase') {
+                fontSize += 1; // 字體大小增加 1px
+            } else if (action === 'decrease') {
+                fontSize -= 1; // 字體大小減少 1px
+            }
+
+            // 確保字體大小在合理範圍內
+            if (fontSize < 12) fontSize = 10;
+            if (fontSize > 24) fontSize = 24;
+
+            // 設定所有消息元素的字體大小
+            for (let i = 0; i < messages.length; i++) {
+                messages[i].style.fontSize = fontSize + 'px';
+            }
+        }
+
+        // 另存對話內容到文字檔
+        function saveConversationToFile(identifier) {
+            const chatHistory = localStorage.getItem(identifier + '_chatHistory'); // 獲取聊天歷史
+            if (!chatHistory) return; // 如果沒有聊天歷史，返回
+
+            const chatData = JSON.parse(chatHistory); // 解析聊天歷史
+            let chatText = ''; // 初始化聊天文字
+
+            chatData.forEach((message, index) => {
+                // 將 <br> 標籤替換為換行符號
+                const formattedMessage = message.text.replace(/<br>/g, '\n');
+                chatText += (index + 1) + '. ' + formattedMessage + '\n';
+            }); // 組合聊天文字
+
+            // 找到對應的對話標題
+            const conversationTitle = conversationTitles.find(item => item.identifier === identifier)?.title || '對話';
+
+            const blob = new Blob([chatText], { type: 'text/plain' }); // 建立 Blob 物件
+            const url = URL.createObjectURL(blob); // 建立 URL 物件
+            const a = document.createElement("a"); // 建立超連結元素
+            a.href = url; // 設定超連結 URL
+            a.download = conversationTitle + '.txt'; // 使用對話標題作為檔案名稱
+            document.body.appendChild(a); // 將超連結元素加入 body
+            a.click(); // 點擊超連結元素
+            document.body.removeChild(a); // 移除超連結元素
+            URL.revokeObjectURL(url); // 釋放 URL 物件
+        }
+
+        // 頁面加載時讀取聊天歷史和對話標題
+        window.onload = function() {
+            loadConversationTitles(); // 先讀取對話標題
+            if (conversationTitles.length === 0) {
+                addConversation(); // 如果沒有對話標題，新增一個
+            } else {
+                loadChatHistory(pageIdentifier); // 讀取當前對話標題的聊天歷史
+            }
+        };
+    </script>
+</body>
+</html>
